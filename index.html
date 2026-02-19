@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Elegets Smart Care Monitor</title>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    
+    <style>
+        :root { --bg: #0f172a; --card: #1e293b; --text: #e2e8f0; --green: #10b981; --red: #ef4444; }
+        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); padding: 20px; }
+        
+        /* Grid Layout */
+        .container { max-width: 1000px; margin: 0 auto; display: grid; grid-template-columns: 2fr 1fr; gap: 20px; }
+        
+        .card { background: var(--card); border-radius: 15px; padding: 20px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.5); }
+        
+        /* Slots Grid */
+        .slots-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; }
+        .slot-card { 
+            background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); 
+            padding: 15px; border-radius: 10px; position: relative; 
+        }
+        
+        .slot-title { font-weight: bold; color: #60a5fa; margin-bottom: 10px; display: block; }
+        .count-box { font-size: 2rem; font-weight: 800; float: right; }
+        
+        /* Connection Status */
+        .status-pill { 
+            padding: 5px 12px; border-radius: 20px; font-size: 0.8rem; font-weight: bold;
+            display: inline-flex; align-items: center; gap: 5px;
+        }
+        .online { background: rgba(16, 185, 129, 0.2); color: var(--green); }
+        .offline { background: rgba(239, 68, 68, 0.2); color: var(--red); }
+
+        /* History Log */
+        .log-list { max-height: 400px; overflow-y: auto; }
+        .log-item { 
+            padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); 
+            display: flex; justify-content: space-between; 
+        }
+        .badge-taken { color: var(--green); font-weight: bold; }
+        .badge-missed { color: var(--red); font-weight: bold; }
+
+        input[type="time"] { background: #334155; border: none; color: white; padding: 5px; border-radius: 4px; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div class="card">
+            <div style="display:flex; justify-content:space-between; margin-bottom:20px;">
+                <h2>💊 Digital Twin Dashboard</h2>
+                <div id="connectionStatus" class="status-pill offline"><div style="width:8px; height:8px; border-radius:50%; background:currentColor;"></div> Disconnected</div>
+            </div>
+
+            <div class="slots-grid">
+                <script>
+                    for(let i=0; i<4; i++) {
+                        document.write(`
+                            <div class="slot-card" id="slot-card-${i}">
+                                <span class="slot-title">SLOT ${i+1}</span>
+                                <div class="count-box" id="count-${i}">--</div>
+                                <div style="margin-top:20px;">
+                                    <small>Schedule:</small>
+                                    <input type="time" id="time-${i}" onchange="updateTime(${i}, this.value)">
+                                </div>
+                            </div>
+                        `);
+                    }
+                </script>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>Recent Activity</h3>
+            <div class="log-list" id="logList">
+                <div class="log-item" style="color:#aaa;">Waiting for data...</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="panicOverlay" style="position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(220, 38, 38, 0.9); display:none; justify-content:center; align-items:center; z-index:999;">
+        <div style="text-align:center; color:white;">
+            <i class="fas fa-exclamation-triangle fa-4x"></i>
+            <h1 style="font-size:3rem;">PANIC BUTTON</h1>
+            <button onclick="resetPanic()" style="padding:10px 20px; font-size:1.2rem; cursor:pointer;">Reset Alarm</button>
+        </div>
+    </div>
+
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyBA0KxCDnRWhL70fUpW9coGccBQyRHrzqY",
+            authDomain: "smartpillbox-70993.firebaseapp.com",
+            // ⬇️ THIS LINE WAS MISSING ⬇️
+            databaseURL: "https://smartpillbox-70993-default-rtdb.firebaseio.com", 
+            projectId: "smartpillbox-70993",
+            storageBucket: "smartpillbox-70993.firebasestorage.app",
+            messagingSenderId: "188623105790",
+            appId: "1:188623105790:web:c4df31e14f840bbb07ffaf",
+            measurementId: "G-GXRRB90VKZ"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        // 1. Connection Monitoring
+        const connectedRef = db.ref(".info/connected");
+        connectedRef.on("value", (snap) => {
+            const el = document.getElementById("connectionStatus");
+            if (snap.val() === true) {
+                el.className = "status-pill online";
+                el.innerHTML = '<div style="width:8px; height:8px; border-radius:50%; background:currentColor;"></div> System Online';
+            } else {
+                el.className = "status-pill offline";
+                el.innerHTML = '<div style="width:8px; height:8px; border-radius:50%; background:currentColor;"></div> Offline';
+            }
+        });
+
+        // 2. Real-time Slot Data
+        for (let i = 0; i < 4; i++) {
+            db.ref(`slots/slot${i}`).on('value', (snap) => {
+                const data = snap.val();
+                if(data) {
+                    document.getElementById(`count-${i}`).innerText = data.count;
+                    // Only update time input if not currently focused (to prevent overwriting user typing)
+                    if(document.activeElement.id !== `time-${i}`) {
+                        document.getElementById(`time-${i}`).value = data.time || "08:00";
+                    }
+                }
+            });
+        }
+
+        // 3. History Logs
+        db.ref('logs').limitToLast(10).on('child_added', (snap) => {
+            const log = snap.val();
+            const list = document.getElementById('logList');
+            const date = new Date(log.time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+            
+            const badgeClass = log.type === "MISSED" ? "badge-missed" : "badge-taken";
+            const html = `
+                <div class="log-item">
+                    <span>Slot ${log.slot + 1}</span>
+                    <span class="${badgeClass}">${log.type}</span>
+                    <span style="opacity:0.6;">${date}</span>
+                </div>
+            `;
+            list.innerHTML = html + list.innerHTML;
+        });
+
+        // 4. Panic Logic
+        db.ref('system/panic').on('value', (snap) => {
+            document.getElementById('panicOverlay').style.display = snap.val() ? 'flex' : 'none';
+        });
+
+        function updateTime(id, time) {
+            db.ref(`slots/slot${id}/time`).set(time);
+        }
+        function resetPanic() {
+            db.ref('system/panic').set(false);
+        }
+    </script>
+</body>
+</html>

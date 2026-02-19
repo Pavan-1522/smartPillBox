@@ -1,0 +1,34 @@
+{
+  "slots": {
+    "slot0": {
+      "count": 10,
+      "time": "08:00",
+      "lastTaken": "Never"
+    },
+    "slot1": {
+      "count": 10,
+      "time": "13:00",
+      "lastTaken": "Never"
+    },
+    "slot2": {
+      "count": 10,
+      "time": "18:00",
+      "lastTaken": "Never"
+    },
+    "slot3": {
+      "count": 10,
+      "time": "21:00",
+      "lastTaken": "Never"
+    }
+  },
+  "system": {
+    "panic": false
+  },
+  "logs": {
+    "init": {
+      "type": "SYSTEM",
+      "slot": -1,
+      "time": "Setup Complete"
+    }
+  }
+}
